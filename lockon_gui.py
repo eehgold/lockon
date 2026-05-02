@@ -10,9 +10,12 @@ except ImportError:  # pragma: no cover - handled in the GUI
 
 
 BAUDRATE = 115200
-POSITION_MIN = -100
-POSITION_MAX = 100
-TICK_MS = 80
+POSITION_MIN = -1120
+POSITION_MAX = 1240
+TICK_MS = 120
+SPEED_MIN = 1
+SPEED_MAX = 500
+DEFAULT_SPEED = 200
 
 
 class LockonGui:
@@ -26,13 +29,20 @@ class LockonGui:
 
         self.pos_x = tk.IntVar(value=0)
         self.pos_y = tk.IntVar(value=0)
-        self.speed = tk.IntVar(value=5)
+        self.speed_input = tk.IntVar(value=DEFAULT_SPEED)
+        self.applied_speed = tk.IntVar(value=DEFAULT_SPEED)
         self.port = tk.StringVar()
         self.status = tk.StringVar(value="Deconnecte")
+
+        self.style = ttk.Style()
+        self.style.configure("Connected.TButton", foreground="green")
+        self.style.configure("Disconnect.TButton", foreground="red")
+        self.style.configure("Neutral.TButton")
 
         self._build_ui()
         self.refresh_ports()
         self._bind_keys()
+        self._update_connection_buttons()
         self._tick()
 
     def _build_ui(self) -> None:
@@ -53,10 +63,12 @@ class LockonGui:
         ttk.Button(connection, text="Rafraichir", command=self.refresh_ports).grid(
             row=0, column=1, padx=(0, 8)
         )
-        ttk.Button(connection, text="Connecter", command=self.connect).grid(
+        self.connect_button = ttk.Button(connection, text="Connecter", command=self.connect)
+        self.connect_button.grid(
             row=0, column=2, padx=(0, 8)
         )
-        ttk.Button(connection, text="Deconnecter", command=self.disconnect).grid(
+        self.disconnect_button = ttk.Button(connection, text="Deconnecter", command=self.disconnect)
+        self.disconnect_button.grid(
             row=0, column=3
         )
 
@@ -78,24 +90,23 @@ class LockonGui:
         ttk.Label(telemetry, textvariable=self.pos_x, width=6).grid(row=0, column=1)
         ttk.Label(telemetry, text="Pos Y").grid(row=1, column=0, sticky="w")
         ttk.Label(telemetry, textvariable=self.pos_y, width=6).grid(row=1, column=1)
+        ttk.Label(telemetry, text="Vitesse").grid(row=2, column=0, sticky="w")
+        ttk.Label(telemetry, textvariable=self.applied_speed, width=6).grid(row=2, column=1)
 
         speed_frame = ttk.LabelFrame(frame, text="Vitesse", padding=10)
         speed_frame.grid(row=2, column=1, columnspan=2, sticky="ew")
 
-        ttk.Scale(
-            speed_frame,
-            from_=1,
-            to=20,
-            orient="horizontal",
-            variable=self.speed,
-        ).grid(row=0, column=0, sticky="ew")
         ttk.Spinbox(
             speed_frame,
-            from_=1,
-            to=20,
-            textvariable=self.speed,
+            from_=SPEED_MIN,
+            to=SPEED_MAX,
+            textvariable=self.speed_input,
             width=5,
-        ).grid(row=0, column=1, padx=(8, 0))
+        ).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(speed_frame, text="Envoyer", command=self.apply_speed).grid(
+            row=0,
+            column=1,
+        )
 
         ttk.Label(frame, textvariable=self.status).grid(
             row=3,
@@ -162,6 +173,7 @@ class LockonGui:
             return
 
         self.status.set(f"Connecte sur {selected_port}")
+        self._update_connection_buttons()
         self.root.after(2000, self.center)
 
     def disconnect(self) -> None:
@@ -169,11 +181,27 @@ class LockonGui:
             self.serial_link.close()
             self.serial_link = None
         self.status.set("Deconnecte")
+        self._update_connection_buttons()
+
+    def _update_connection_buttons(self) -> None:
+        is_connected = self.serial_link is not None and self.serial_link.is_open
+        if is_connected:
+            self.connect_button.configure(style="Connected.TButton")
+            self.disconnect_button.configure(style="Disconnect.TButton")
+        else:
+            self.connect_button.configure(style="Neutral.TButton")
+            self.disconnect_button.configure(style="Neutral.TButton")
 
     def center(self) -> None:
         self.pos_x.set(0)
         self.pos_y.set(0)
         self._send_position()
+
+    def apply_speed(self) -> None:
+        speed = max(SPEED_MIN, min(int(self.speed_input.get()), SPEED_MAX))
+        self.speed_input.set(speed)
+        self.applied_speed.set(speed)
+        self.status.set(f"Vitesse appliquee: {speed}")
 
     def _press(self, direction: str) -> None:
         self.active_directions.add(direction)
@@ -183,18 +211,18 @@ class LockonGui:
 
     def _tick(self) -> None:
         if self.active_directions:
-            step = max(1, min(int(self.speed.get()), 20))
+            step = max(SPEED_MIN, min(int(self.applied_speed.get()), SPEED_MAX))
             x = self.pos_x.get()
             y = self.pos_y.get()
 
-            if "LEFT" in self.active_directions:
-                x -= step
-            if "RIGHT" in self.active_directions:
-                x += step
             if "UP" in self.active_directions:
-                y += step
+                x += step
             if "DOWN" in self.active_directions:
+                x -= step
+            if "LEFT" in self.active_directions:
                 y -= step
+            if "RIGHT" in self.active_directions:
+                y += step
 
             self.pos_x.set(max(POSITION_MIN, min(POSITION_MAX, x)))
             self.pos_y.set(max(POSITION_MIN, min(POSITION_MAX, y)))

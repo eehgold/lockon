@@ -150,8 +150,13 @@ python lockon_gui.py
 - Pilotage a la souris via les boutons de l'interface.
 - Pilotage au clavier avec les touches flechees.
 - Affichage de `Pos X` et `Pos Y`.
-- Parametre `Vitesse` modifiable pendant l'utilisation.
+- Parametre `Vitesse` saisissable puis applique avec le bouton `Envoyer`.
+- Affichage de la vitesse appliquee dans la zone `Etat`.
 - Bouton `CENTRE` pour revenir a `X=0`, `Y=0`.
+
+La vitesse GUI accepte une valeur de `1` a `500`. Cette limite vient de la
+datasheet du MG996R, qui annonce environ `0.17 s / 60 degres` a `4.8V` et
+`0.14 s / 60 degres` a `6V`.
 
 ### Protocole serie
 
@@ -167,9 +172,14 @@ Exemple :
 POS 20 -10
 ```
 
-Les positions vont de `-100` a `100`. L'Arduino convertit ensuite ces valeurs
-vers une plage servo limitee entre `1250us` et `1750us` pour eviter les
-mouvements trop grands pendant les premiers tests.
+Les positions calibrees vont de `-1120` a `1240`. L'Arduino convertit directement
+la position en microsecondes autour du centre `1500us` :
+
+```text
+pulse servo = 1500us + position
+```
+
+Les valeurs actuelles correspondent aux limites observees sur la tourelle.
 
 ### Canaux v0.1
 
@@ -177,3 +187,12 @@ mouvements trop grands pendant les premiers tests.
 | --- | --- |
 | 0 | Y |
 | 1 | X |
+
+### Controles v0.1
+
+| Controle | Axe commande |
+| --- | --- |
+| Fleche haut | X + |
+| Fleche bas | X - |
+| Fleche gauche | Y - |
+| Fleche droite | Y + |

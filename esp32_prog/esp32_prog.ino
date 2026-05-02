@@ -5,12 +5,10 @@ const byte PCA9685_ADDRESS = 0x40;
 const byte SERVO_Y_CHANNEL = 0;
 const byte SERVO_X_CHANNEL = 1;
 
-const int SERVO_MIN_US = 1250;
 const int SERVO_CENTER_US = 1500;
-const int SERVO_MAX_US = 1750;
-const int POSITION_MIN = -100;
+const int POSITION_MIN = -1120;
 const int POSITION_CENTER = 0;
-const int POSITION_MAX = 100;
+const int POSITION_MAX = 1240;
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(PCA9685_ADDRESS);
 bool pcaFound = false;
@@ -62,7 +60,7 @@ void initPCA9685() {
 
 int positionToPulse(int position) {
   position = constrain(position, POSITION_MIN, POSITION_MAX);
-  return map(position, POSITION_MIN, POSITION_MAX, SERVO_MIN_US, SERVO_MAX_US);
+  return SERVO_CENTER_US + position;
 }
 
 void setTurretPosition(int x, int y) {
@@ -158,5 +156,6 @@ void loop() {
     String command = Serial.readStringUntil('\n');
     handleSerialCommand(command);
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(10);
   }
 }
