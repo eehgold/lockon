@@ -131,10 +131,10 @@ PCA9685 et les deux servos.
 
 ---
 
-## LOCKON v0.1 - Interface manuelle
+## LOCKON v0.2 - Interface manuelle avec retour camera
 
 Le script `lockon_gui.py` fournit une interface graphique simple pour piloter
-les deux servos depuis le PC.
+les deux servos depuis le PC et afficher le retour de la camera USB.
 
 ### Lancement
 
@@ -145,8 +145,15 @@ python lockon_gui.py
 
 ### Fonctionnalites
 
+- Affichage du flux camera dans l'encart `Video`.
+- Demarrage automatique de la camera a l'ouverture de la GUI.
+- Selection de l'index camera puis demarrage/arret manuel depuis la GUI.
+- Detection de main dans le flux video avec le modele local `hand_landmarker.task`.
+- Overlay LOCKON : reticule central, squelette/boite de main et compteur de mains.
+- Interface regroupee par encarts : `Video`, `Connexion`, `Controles`,
+  `Parametres`, `Etat`.
 - Connexion au port serie de l'Arduino.
-- Affichage de 4 fleches directionnelles.
+- Affichage de 4 boutons directionnels.
 - Pilotage a la souris via les boutons de l'interface.
 - Pilotage au clavier avec les touches flechees.
 - Affichage de `Pos X` et `Pos Y`.
@@ -154,7 +161,7 @@ python lockon_gui.py
 - Affichage de la vitesse appliquee dans la zone `Etat`.
 - Bouton `CENTRE` pour revenir a `X=0`, `Y=0`.
 
-La vitesse GUI accepte une valeur de `1` a `500`. Cette limite vient de la
+La vitesse GUI vaut `50` par defaut et accepte une valeur de `1` a `500`. Cette limite vient de la
 datasheet du MG996R, qui annonce environ `0.17 s / 60 degres` a `4.8V` et
 `0.14 s / 60 degres` a `6V`.
 
@@ -172,14 +179,16 @@ Exemple :
 POS 20 -10
 ```
 
-Les positions calibrees vont de `-1120` a `1240`. L'Arduino convertit directement
-la position en microsecondes autour du centre `1500us` :
+La GUI v0.2 limite les positions envoyees de `-700` a `700` pour eviter de
+forcer les servos en butee pendant les tests. L'Arduino convertit directement la
+position en microsecondes autour du centre `1500us` :
 
 ```text
 pulse servo = 1500us + position
 ```
 
-Les valeurs actuelles correspondent aux limites observees sur la tourelle.
+Le sketch Arduino accepte encore la plage large historique, mais il vaut mieux
+recalibrer axe par axe avant de remonter les limites dans la GUI.
 
 ### Canaux v0.1
 
