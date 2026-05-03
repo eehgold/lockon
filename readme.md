@@ -148,8 +148,13 @@ python lockon_gui.py
 - Affichage du flux camera dans l'encart `Video`.
 - Demarrage automatique de la camera a l'ouverture de la GUI.
 - Selection de l'index camera puis demarrage/arret manuel depuis la GUI.
-- Detection de main dans le flux video avec le modele local `hand_landmarker.task`.
-- Overlay LOCKON : reticule central, squelette/boite de main et compteur de mains.
+- Detection de cible dans le flux video : `Main` avec le modele local
+  `hand_landmarker.task`, ou `Tete` avec la cascade OpenCV integree.
+- Overlay LOCKON : reticule central, boite/squelette de cible et compteur.
+- Encart `Tracking` avec choix de cible `Rien`, `Main`, `Tete`, mode de vitesse
+  `Normal` ou `Fast`, zone morte, gain de correction et prediction.
+- Suivi automatique : la tourelle corrige `X/Y` pour ramener la cible au centre
+  du reticule.
 - Interface regroupee par encarts : `Video`, `Connexion`, `Controles`,
   `Parametres`, `Etat`.
 - Connexion au port serie de l'Arduino.
@@ -164,6 +169,19 @@ python lockon_gui.py
 La vitesse GUI vaut `50` par defaut et accepte une valeur de `1` a `500`. Cette limite vient de la
 datasheet du MG996R, qui annonce environ `0.17 s / 60 degres` a `4.8V` et
 `0.14 s / 60 degres` a `6V`.
+
+Le suivi automatique est regle sur `Main` au demarrage. Pour couper totalement
+le tracking, choisir `Rien` dans l'encart `Tracking`. Procedure conseillee :
+connecter l'Arduino, cliquer `CENTRE`, verifier la detection dans la video, puis
+choisir `Main` ou `Tete`. Les boutons manuels gardent la priorite pendant
+l'appui. Le mode `Fast` augmente la correction par tick sans depasser les
+limites servo.
+
+L'option `Prediction` estime la vitesse de la cible entre deux detections et
+oriente le tracking vers une position avancee de quelques millisecondes. Le
+parametre `Avance ms` regle cette anticipation. Une valeur trop haute peut
+faire depasser la cible ou provoquer des oscillations ; commencer autour de
+`160 ms`, puis ajuster progressivement.
 
 ### Protocole serie
 
