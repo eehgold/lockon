@@ -39,6 +39,9 @@ LOCKON est une tourelle motorisee capable de :
 - Driver PWM PCA9685 (16 canaux)
 - Alimentation 5V 5A
 - Module laser 5V (650 nm)
+- Transistor NPN type 2N2222/BC337 ou MOSFET logique pour commuter le laser
+- Resistance 1 kOhm pour la commande du transistor
+- Resistance 10 kOhm optionnelle entre commande laser et GND pour garder le laser eteint au demarrage
 - Condensateur 470 uF
 
 ### Divers
@@ -61,6 +64,8 @@ flowchart LR
     PSU[Alimentation 5V externe]
     S1[Servo axe Y]
     S2[Servo axe X]
+    Q1[Transistor/MOSFET]
+    LASER[Module laser 5V]
 
     PC -->|USB| ARD
 
@@ -74,6 +79,11 @@ flowchart LR
 
     PCA -->|Canal PWM 0 / axe Y| S1
     PCA -->|Canal PWM 1 / axe X| S2
+
+    ARD -->|D7 via resistance 1k| Q1
+    PSU -->|+5V| LASER
+    LASER -->|fil noir / GND commute| Q1
+    Q1 -->|GND commun| PSU
 ```
 
 | Arduino Nano | PCA9685 | Role |
@@ -87,6 +97,33 @@ flowchart LR
 | --- | --- | --- |
 | +5V | V+ | Alimentation des servos |
 | GND | GND | Masse commune avec Arduino/PCA |
+
+### Branchement du laser
+
+Le module laser a deux fils :
+
+| Fil laser | Branchement recommande | Role |
+| --- | --- | --- |
+| Rouge | +5V de l'alimentation externe | Alimentation laser |
+| Noir | Collecteur/drain du transistor | Masse commutee par l'Arduino |
+
+Commande du transistor :
+
+| Arduino Nano | Intermediaire | Role |
+| --- | --- | --- |
+| D7 | Resistance 1 kOhm puis base/gate transistor | Signal de commande laser |
+| GND | Emetteur/source transistor et GND alimentation | Masse commune |
+
+Avec un NPN type 2N2222/BC337 : fil noir du laser sur le collecteur, emetteur
+sur GND, D7 vers la base via une resistance 1 kOhm. Avec un MOSFET logique :
+fil noir du laser sur le drain, source sur GND, D7 vers la gate. Dans tous les
+cas, le GND Arduino, le GND PCA9685 et le GND de l'alimentation 5V doivent etre
+communs.
+
+Ne pas alimenter un laser de courant inconnu directement depuis une broche de
+l'Arduino. La broche D7 sert seulement a commander le transistor. Pour les
+tests, garder le laser pointe vers une surface mate non reflechissante, jamais
+vers les yeux ou un visage.
 
 ---
 
@@ -189,12 +226,15 @@ Le PC envoie des commandes texte a l'Arduino :
 
 ```text
 POS x y
+LASER 0
+LASER 1
 ```
 
 Exemple :
 
 ```text
 POS 20 -10
+LASER 1
 ```
 
 La GUI v0.2 limite les positions envoyees de `-700` a `700` pour eviter de
@@ -207,6 +247,17 @@ pulse servo = 1500us + position
 
 Le sketch Arduino accepte encore la plage large historique, mais il vaut mieux
 recalibrer axe par axe avant de remonter les limites dans la GUI.
+
+La GUI comporte une option `Laser auto`, desactivee au demarrage. Quand elle est
+armee, le PC envoie `LASER 1` seulement quand une cible `Main` ou `Tete` est
+detectee et que son centre est dans la zone morte du reticule. Cela signifie que
+la tourelle vise au bon endroit. Le PC envoie `LASER 0` quand la cible sort de
+la zone morte, disparait, quand le tracking passe sur `Rien`, quand la camera
+s'arrete ou lors de la deconnexion serie.
+
+Pour le debug de branchement, la case `Laser force` envoie `LASER 1` meme sans
+detection de cible. Elle permet de verifier au voltmetre que la broche `D7`
+passe bien a environ `5V` par rapport au `GND`.
 
 ### Canaux v0.1
 

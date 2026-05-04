@@ -4,6 +4,7 @@
 const byte PCA9685_ADDRESS = 0x40;
 const byte SERVO_Y_CHANNEL = 0;
 const byte SERVO_X_CHANNEL = 1;
+const byte LASER_PIN = 7;
 
 const int SERVO_CENTER_US = 1500;
 const int POSITION_MIN = -1120;
@@ -14,6 +15,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(PCA9685_ADDRESS);
 bool pcaFound = false;
 int currentX = POSITION_CENTER;
 int currentY = POSITION_CENTER;
+bool laserEnabled = false;
 
 byte i2cProbe(byte address) {
   Wire.beginTransmission(address);
@@ -76,6 +78,14 @@ void setTurretPosition(int x, int y) {
   Serial.println(currentY);
 }
 
+void setLaser(bool enabled) {
+  laserEnabled = enabled;
+  digitalWrite(LASER_PIN, laserEnabled ? HIGH : LOW);
+  digitalWrite(LED_BUILTIN, laserEnabled ? HIGH : LOW);
+  Serial.print("OK LASER=");
+  Serial.println(laserEnabled ? 1 : 0);
+}
+
 void handleSerialCommand(String command) {
   command.trim();
   command.toUpperCase();
@@ -86,6 +96,16 @@ void handleSerialCommand(String command) {
 
   if (command == "CENTER") {
     setTurretPosition(POSITION_CENTER, POSITION_CENTER);
+    return;
+  }
+
+  if (command == "LASER ON" || command == "LASER 1") {
+    setLaser(true);
+    return;
+  }
+
+  if (command == "LASER OFF" || command == "LASER 0") {
+    setLaser(false);
     return;
   }
 
@@ -109,6 +129,8 @@ void handleSerialCommand(String command) {
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
+  pinMode(LASER_PIN, OUTPUT);
+  digitalWrite(LASER_PIN, LOW);
 
   Serial.begin(115200);
   delay(2000);
@@ -116,6 +138,7 @@ void setup() {
   Serial.println();
   Serial.println("LOCKON - test PCA9685 + servos");
   Serial.println("Moniteur serie: 115200 bauds");
+  Serial.println("Laser sur D7. Commandes: LASER 1 / LASER 0");
 
   Serial.println("Initialisation I2C...");
   Wire.begin();
@@ -155,7 +178,6 @@ void loop() {
   if (Serial.available()) {
     String command = Serial.readStringUntil('\n');
     handleSerialCommand(command);
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     delay(10);
   }
 }

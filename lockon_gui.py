@@ -81,12 +81,17 @@ class LockonGui:
         self.tracking_gain_percent = tk.IntVar(value=int(TRACKING_GAIN * 100))
         self.prediction_enabled = tk.BooleanVar(value=False)
         self.prediction_ms = tk.IntVar(value=DEFAULT_PREDICTION_MS)
+        self.laser_armed = tk.BooleanVar(value=False)
+        self.laser_forced = tk.BooleanVar(value=False)
+        self.laser_active = tk.BooleanVar(value=False)
+        self.last_laser_command_state = False
         self.target_count = tk.IntVar(value=0)
         self.port = tk.StringVar()
         self.status = tk.StringVar(value="Deconnecte")
         self.camera_status = tk.StringVar(value="Camera arretee")
         self.detection_status = tk.StringVar(value="Detection inactive")
         self.tracking_status = tk.StringVar(value="Suivi inactif")
+        self.laser_status = tk.StringVar(value="Laser desarme")
 
         self.style = ttk.Style()
         self.style.configure("Connected.TButton", foreground="green")
@@ -256,6 +261,18 @@ class LockonGui:
             textvariable=self.prediction_ms,
             width=5,
         ).grid(row=2, column=3, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(
+            tracking,
+            text="Laser auto",
+            variable=self.laser_armed,
+            command=self._on_laser_armed_changed,
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(
+            tracking,
+            text="Laser force",
+            variable=self.laser_forced,
+            command=self._on_laser_force_changed,
+        ).grid(row=3, column=2, columnspan=2, sticky="w", pady=(8, 0))
 
         self.tracking_target.trace_add("write", lambda *_args: self._on_tracking_target_changed())
         self.tracking_speed_mode.trace_add("write", lambda *_args: self._update_tracking_status())
@@ -278,8 +295,10 @@ class LockonGui:
         ttk.Label(state, textvariable=self.tracking_status, width=24).grid(row=5, column=1, sticky="e")
         ttk.Label(state, text="Cibles").grid(row=6, column=0, sticky="w")
         ttk.Label(state, textvariable=self.target_count, width=24).grid(row=6, column=1, sticky="e")
-        ttk.Label(state, text="Serie").grid(row=7, column=0, sticky="w")
-        ttk.Label(state, textvariable=self.status, width=24).grid(row=7, column=1, sticky="e")
+        ttk.Label(state, text="Laser").grid(row=7, column=0, sticky="w")
+        ttk.Label(state, textvariable=self.laser_status, width=24).grid(row=7, column=1, sticky="e")
+        ttk.Label(state, text="Serie").grid(row=8, column=0, sticky="w")
+        ttk.Label(state, textvariable=self.status, width=24).grid(row=8, column=1, sticky="e")
 
     def _arrow_button(self, parent: ttk.Frame, label: str, direction: str) -> ttk.Button:
         button = ttk.Button(parent, text=label, width=8)
@@ -340,8 +359,10 @@ class LockonGui:
         self.status.set(f"Connecte sur {selected_port}")
         self._update_connection_buttons()
         self.root.after(2000, self.center)
+        self.root.after(2100, self._force_sync_laser_state)
 
     def disconnect(self) -> None:
+        self._set_laser_output(False)
         if self.serial_link is not None:
             self.serial_link.close()
             self.serial_link = None
@@ -422,6 +443,7 @@ class LockonGui:
         self.previous_target_time = None
         self.target_velocity = (0.0, 0.0)
         self.target_count.set(0)
+        self._sync_laser_state()
         self.camera_status.set("Camera arretee")
         self._set_video_message("Camera arretee")
         self._update_camera_buttons()
@@ -497,12 +519,19 @@ class LockonGui:
     def _on_tracking_target_changed(self) -> None:
         self._clear_targets()
         self._update_detection_status()
+        self._sync_laser_state()
 
     def _on_prediction_changed(self) -> None:
         self._reset_prediction()
         if self.observed_target_center is not None:
             self.target_center = self._predict_target_center(self.observed_target_center)
         self._update_tracking_status()
+
+    def _on_laser_armed_changed(self) -> None:
+        self._sync_laser_state()
+
+    def _on_laser_force_changed(self) -> None:
+        self._sync_laser_state()
 
     def _clear_targets(self) -> None:
         self.hand_draw_data = []
@@ -553,10 +582,12 @@ class LockonGui:
         target = self.tracking_target.get()
         if target == "Rien":
             self._clear_targets()
+            self._sync_laser_state()
             return
 
         self.frame_index += 1
         if self.frame_index % DETECT_EVERY_FRAMES != 0:
+            self._sync_laser_state()
             self._draw_current_target(frame)
             return
 
@@ -566,10 +597,12 @@ class LockonGui:
             self._process_head_detection(frame)
 
         self._update_tracking_status()
+        self._sync_laser_state()
         self._draw_current_target(frame)
 
     def _process_hand_detection(self, frame) -> None:
         if not self._ensure_landmarker():
+            self._clear_targets()
             return
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -591,6 +624,7 @@ class LockonGui:
 
     def _process_head_detection(self, frame) -> None:
         if not self._ensure_face_cascade():
+            self._clear_targets()
             self._update_detection_status()
             return
 
@@ -871,6 +905,76 @@ class LockonGui:
     @staticmethod
     def _clamp_position(position: int) -> int:
         return max(POSITION_MIN, min(POSITION_MAX, position))
+
+    def _sync_laser_state(self) -> None:
+        self._set_laser_output(self._laser_should_enable())
+
+    def _force_sync_laser_state(self) -> None:
+        should_enable = self._laser_should_enable()
+        self.last_laser_command_state = not should_enable
+        self._set_laser_output(should_enable)
+
+    def _laser_should_enable(self) -> bool:
+        return bool(self.laser_forced.get() or (self.laser_armed.get() and self._target_in_deadzone()))
+
+    def _target_in_deadzone(self) -> bool:
+        if self.tracking_target.get() == "Rien" or self.target_count.get() == 0:
+            return False
+        if self.target_center is None:
+            return False
+
+        target_x, target_y = self.target_center
+        deadzone = max(0, int(self.tracking_deadzone.get()))
+        offset_x = target_x - (VIDEO_WIDTH // 2)
+        offset_y = target_y - (VIDEO_HEIGHT // 2)
+        return abs(offset_x) <= deadzone and abs(offset_y) <= deadzone
+
+    def _set_laser_output(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if enabled == self.last_laser_command_state:
+            self.laser_active.set(enabled)
+            self._update_laser_status()
+            return
+
+        self.last_laser_command_state = enabled
+        self.laser_active.set(enabled)
+        self._update_laser_status()
+        self._send_laser_command(enabled)
+
+    def _update_laser_status(self) -> None:
+        if self.laser_forced.get() and self.laser_active.get():
+            self.laser_status.set("Laser force ON")
+        elif self.laser_forced.get():
+            self.laser_status.set("Laser force")
+        elif not self.laser_armed.get():
+            self.laser_status.set("Laser desarme")
+        elif self.laser_active.get():
+            self.laser_status.set("Laser ON")
+        else:
+            self.laser_status.set("Laser arme")
+
+    def _send_laser_command(self, enabled: bool) -> None:
+        command = f"LASER {1 if enabled else 0}\n"
+        if self.serial_link is None or not self.serial_link.is_open:
+            self.status.set(f"Simulation: {command.strip()}")
+            return
+
+        try:
+            self.serial_link.write(command.encode("ascii"))
+            serial_reply = self._read_serial_reply()
+            if serial_reply:
+                self.status.set(serial_reply)
+            else:
+                self.status.set(f"Envoye: {command.strip()}")
+        except serial.SerialException as exc:
+            self.status.set(f"Erreur serie: {exc}")
+            if self.serial_link is not None:
+                self.serial_link.close()
+                self.serial_link = None
+            self.last_laser_command_state = False
+            self.laser_active.set(False)
+            self._update_laser_status()
+            self._update_connection_buttons()
 
     def _send_position(self) -> None:
         command = f"POS {self.pos_x.get()} {self.pos_y.get()}\n"
